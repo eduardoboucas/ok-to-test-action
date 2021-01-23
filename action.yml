@@ -3,10 +3,8 @@ description: 'Start jobs on forked PRs with a slash command'
 inputs:
   appId:
     description: 'ID of the GitHub App'
-    required: true
   appPrivateKey:
     description: 'Private key of the GitHub App'
-    required: true
   finished:
     description: 'Signal that the integration flow has been finished'
     default: false
