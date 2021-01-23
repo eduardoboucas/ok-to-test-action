@@ -10,7 +10,30 @@ inputs:
     default: false
 runs:
   using: "composite"
-  steps: 
+  steps:
+    # Generate a token
+    - name: Generate token
+      id: generate_token
+      if: github.event_name == 'pull_request' && ${{ github.event.issue.pull_request }}
+      uses: tibdex/github-app-token@v1
+      with:
+        app_id: ${{ secrets.APP_ID }}
+        private_key: ${{ secrets.PRIVATE_KEY }}
+
+    # Dispatch the command
+    - name: Slash Command Dispatch
+      if: github.event_name == 'issue_comment'
+      uses: peter-evans/slash-command-dispatch@v1
+      env:
+        TOKEN: ${{ steps.generate_token.outputs.token }}
+      with:
+        token: ${{ env.TOKEN }}
+        reaction-token: ${{ secrets.GITHUB_TOKEN }}
+        issue-type: pull-request
+        commands: ok-to-test
+        named-args: true
+        permission: write
+
     # Fail early if access is unauthorized
     - name: Fail
       if: 
