@@ -1,0 +1,62 @@
+name: 'ok-to-test'
+description: 'Start jobs on forked PRs with a slash command'
+inputs:
+  appId:
+    description: 'ID of the GitHub App'
+    required: true
+  appPrivateKey:
+    description: 'Private key of the GitHub App'
+    required: true
+  finished:
+    description: 'Signal that the integration flow has been finished'
+    default: false
+runs:
+  using: "composite"
+  steps: 
+    # Fail early if access is unauthorized
+    - name: Fail
+      if: 
+        (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) || 
+        (github.event_name == 'repository_dispatch' && (github.event.client_payload.slash_command.sha == '' ||
+        !contains(github.event.client_payload.pull_request.head.sha, github.event.client_payload.slash_command.sha))
+      run:
+        exit 1
+
+    # Checkout action for contributors
+    - uses: actions/checkout@v2
+      if: github.event_name == 'pull_request' && !${{ inputs.finished }}
+      with:
+        ref: 'refs/pull/${{ github.event.client_payload.pull_request.number }}/merge'
+
+    # Checkout action for admins
+    - uses: actions/checkout@v2
+      if: github.event_name != 'pull_request' && !${{ inputs.finished }}
+
+    # Update check run called "integration-fork"
+    - uses: actions/github-script@v1
+      id: update-check-run
+      if: github.event_name == 'pull_request' && ${{ inputs.finished }}
+      env:
+        number: ${{ github.event.client_payload.pull_request.number }}
+        job: ${{ github.job }}
+        conclusion: ${{ job.status }} 
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const { data: pull } = await github.pulls.get({
+            ...context.repo,
+            pull_number: process.env.number
+          });
+          const ref = pull.head.sha;
+          const { data: checks } = await github.checks.listForRef({
+            ...context.repo,
+            ref
+          });
+          const check = checks.check_runs.filter(c => c.name === process.env.job);
+          const { data: result } = await github.checks.update({
+            ...context.repo,
+            check_run_id: check[0].id,
+            status: 'completed',
+            conclusion: process.env.conclusion
+          });
+          return result;        
